@@ -67,34 +67,29 @@ jobs:
             libgtk-3-dev libglib2.0-dev libgstreamer1.0-dev golang curl
       - name: 安装 buildozer
         run: pip install buildozer
-      - name: 构建 APK（首次下载 SDK/NDK/Qt，自动接受许可证后编译，耗时较长）
+      - name: 构建 APK（预装并接受 SDK 许可证后编译，耗时较长）
         run: |
-          cd build
           export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
-          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
           export ANDROID_HOME=$ANDROID_SDK_ROOT
-          # 第一次：让 buildozer 下载 SDK/NDK（云端无交互会卡在许可证，但 SDK 已落地）
-          buildozer android debug || true
-          # 定位 sdkmanager（兼容各种目录布局/符号链接，去掉 -type f）
-          SDKMANAGER=""
-          for p in \
-            "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-            "$ANDROID_SDK_ROOT/cmdline-tools/bin/sdkmanager" \
-            "$ANDROID_SDK_ROOT/tools/bin/sdkmanager"; do
-            if [ -e "$p" ]; then SDKMANAGER="$p"; break; fi
-          done
-          if [ -z "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find $HOME/.buildozer -name sdkmanager 2>/dev/null | head -n1)
-          fi
+          # 1) 下载标准 Android command-line tools 到固定路径（路径可控，必有 bin/sdkmanager）
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          cd $ANDROID_SDK_ROOT/cmdline-tools
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/ct.zip
+          unzip -q /tmp/ct.zip
+          mv cmdline-tools latest
+          cd $ANDROID_SDK_ROOT
+          SDKMANAGER=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager
           echo "==> sdkmanager = $SDKMANAGER"
-          if [ -n "$SDKMANAGER" ]; then
-            yes | "$SDKMANAGER" --licenses || true
-            yes | "$SDKMANAGER" --accept-license || true
-            yes | "$SDKMANAGER" "build-tools;37.0.0" "platform-tools" "platforms;android-33" || true
-          else
-            echo "::error::未找到 sdkmanager"
-          fi
-          # 第二次：许可证已接受，真正开始编译（耗时 20~40 分钟）
+          # 2) 接受全部许可证并预装所需包（全局写入 ~/.android/licenses，buildozer 也会读到）
+          yes | "$SDKMANAGER" --licenses || true
+          yes | "$SDKMANAGER" --accept-license || true
+          yes | "$SDKMANAGER" "build-tools;37.0.0" "platform-tools" "platforms;android-33" || true
+          # 3) 让 buildozer 直接使用这份已授权的 SDK
+          cd build
+          sed -i "s|^android.sdk_path = .*|android.sdk_path = $ANDROID_SDK_ROOT|" buildozer.spec
+          grep -q '^android.sdk_path' buildozer.spec || echo "android.sdk_path = $ANDROID_SDK_ROOT" >> buildozer.spec
+          # 4) 真正编译（耗时 20~40 分钟）
           buildozer android debug
       - name: 上传 APK
         uses: actions/upload-artifact@v4
