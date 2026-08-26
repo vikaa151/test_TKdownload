@@ -1,0 +1,96 @@
+name: Build Windows exe & Android APK
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------
+  # Windows：PyInstaller 打包为单文件 exe（完整可用，含签名）
+  # ---------------------------------------------------------------
+  windows:
+    name: Windows exe
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: 注入 A_Bogus 签名（来自 Secret ABOGUS_JS）
+        shell: bash
+        run: |
+          mkdir -p sign
+          if [ -n "${{ secrets.ABOGUS_JS }}" ]; then
+            printf '%s' "${{ secrets.ABOGUS_JS }}" > sign/abogus.js
+            echo "abogus.js 已注入"
+          else
+            echo "::warning::未配置 Secret ABOGUS_JS，构建出的 exe 不含签名，需用户自行放入 sign/abogus.js"
+          fi
+
+      - name: 打包 exe
+        run: python build\build_windows.py
+
+      - name: 上传 exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/抖音作品批量下载器.exe
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------
+  # Android：buildozer + p4a(qt bootstrap) 构建 APK
+  # 纯 Python a_bogus 签名（src/abogus.py + src/signer.py，依赖 gmssl），
+  # 免 Node、无需任何 Secret，APK 构建完成即可用。
+  # ---------------------------------------------------------------
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: 释放磁盘空间（Qt-for-Android 编译较占空间）
+        run: |
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache 2>/dev/null || true
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip \
+            autoconf libtool pkg-config zlib1g-dev libncurses5-dev libtinfo5 \
+            cmake libffi-dev libssl-dev patchelf automake build-essential \
+            libgtk-3-dev libglib2.0-dev libgstreamer1.0-dev golang curl
+
+      - name: 安装 buildozer
+        run: pip install buildozer
+
+      - name: 构建 APK（首次会下载 SDK/NDK/Qt，耗时较长）
+        run: cd build && buildozer android debug
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/bin/*.apk
+          if-no-files-found: error
