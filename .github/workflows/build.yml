@@ -85,8 +85,18 @@ jobs:
       - name: 安装 buildozer
         run: pip install buildozer
 
-      - name: 构建 APK（首次会下载 SDK/NDK/Qt，耗时较长）
-        run: cd build && buildozer android debug
+      - name: 构建 APK（首次下载 SDK/NDK/Qt，自动接受许可证后编译，耗时较长）
+        run: |
+          cd build
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+          # 第一次：让 buildozer 下载 SDK/NDK（云端无交互会卡在许可证，但 SDK 已落地）
+          buildozer android debug || true
+          # 强制接受所有 Android SDK 许可证（解决 build-tools 装不上 / Aidl not found）
+          SDKMANAGER=$(find $HOME/.buildozer -name sdkmanager -type f | head -n1)
+          yes | "$SDKMANAGER" --licenses || true
+          # 第二次：许可证已接受，真正开始编译（耗时 20~40 分钟）
+          buildozer android debug
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
