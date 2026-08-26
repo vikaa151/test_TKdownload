@@ -27,6 +27,7 @@ android.permissions = INTERNET
 android.api = 33
 android.minapi = 24
 android.ndk = 25b
+# 关键：云端无交互环境必须自动接受 SDK 许可证，否则 build-tools 装不上导致 Aidl not found
 android.accept_sdk_license = True
 # 入口：p4a qt bootstrap 约定从 source.dir 下的 main.py 启动（见仓库根 main.py）。
 # A_Bogus 签名：纯 Python 实现（src/abogus.py + src/signer.py），依赖 gmssl，
