@@ -75,15 +75,24 @@ jobs:
           export ANDROID_HOME=$ANDROID_SDK_ROOT
           # 第一次：让 buildozer 下载 SDK/NDK（云端无交互会卡在许可证，但 SDK 已落地）
           buildozer android debug || true
-          # 直接在 buildozer 已下载的 SDK 上强制接受许可证（用确定路径，不靠 find）
-          SDKMANAGER=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager
+          # 定位 sdkmanager（兼容各种目录布局/符号链接，去掉 -type f）
+          SDKMANAGER=""
+          for p in \
+            "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "$ANDROID_SDK_ROOT/cmdline-tools/bin/sdkmanager" \
+            "$ANDROID_SDK_ROOT/tools/bin/sdkmanager"; do
+            if [ -e "$p" ]; then SDKMANAGER="$p"; break; fi
+          done
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find $HOME/.buildozer -name sdkmanager 2>/dev/null | head -n1)
+          fi
           echo "==> sdkmanager = $SDKMANAGER"
-          if [ -x "$SDKMANAGER" ]; then
+          if [ -n "$SDKMANAGER" ]; then
             yes | "$SDKMANAGER" --licenses || true
             yes | "$SDKMANAGER" --accept-license || true
             yes | "$SDKMANAGER" "build-tools;37.0.0" "platform-tools" "platforms;android-33" || true
           else
-            echo "::error::未找到 sdkmanager 于 $SDKMANAGER"
+            echo "::error::未找到 sdkmanager"
           fi
           # 第二次：许可证已接受，真正开始编译（耗时 20~40 分钟）
           buildozer android debug
