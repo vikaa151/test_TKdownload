@@ -21,6 +21,15 @@ android.minapi = 24
 android.ndk = 28c
 android.accept_sdk_license = True
 
+# 锁定到我们 patch 过的 python-for-android 副本（强制 Python 3.11.5，规避 3.14 实验版的 bootstrap 头文件缺失）
+# 工作流会 clone p4a 2026.5.9 并把 python3/hostpython3 recipe 的 version 从 3.14.2 改成 3.11.5，
+# 再用 p4a.source_dir 指给它。原因：p4a 最新默认 Python 3.14 是实验版，编译 Qt/SDL2 bootstrap 的
+# start.c 时 include/python3.14/Python.h 缺失导致构建失败；3.11.5 成熟稳定，make install 标准安装头文件。
+p4a.source_dir = /opt/p4a
+
+# 第三方运行依赖（PySide6 由 qt bootstrap 自动提供；gmssl/httpx/openpyxl 须显式声明，否则打包后 import 失败）
+requirements = PySide6, httpx, gmssl, openpyxl
+
 # 入口：p4a qt bootstrap 约定从 source.dir 下的 main.py 启动（见仓库根 main.py）。
 # A_Bogus 签名：纯 Python 实现（src/abogus.py + src/signer.py），依赖 gmssl，
 # 已在 requirements 中声明，无需 Node.js、无需任何 JS 文件。
