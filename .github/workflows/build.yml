@@ -70,26 +70,31 @@ jobs:
       - name: 构建 APK（预装并接受 SDK 许可证后编译，耗时较长）
         run: |
           export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          export ANDROID_HOME=$ANDROID_SDK_ROOT
-          export ANDROID_SDK_HOME=$ANDROID_SDK_ROOT
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          # 关键：buildozer 实际使用的默认 SDK 路径就是下面这个（日志里
+          # Extracting ... to /home/runner/.buildozer/android/platform/android-sdk 可证）。
+          # 它并不会采纳 android.sdk_path，而是自己下一份到默认目录，并把 ANDROID_SDK_HOME
+          # 指向该目录去读许可证。所以我们直接把 build-tools 等包和许可证装进“同一个默认目录”，
+          # 从源头消除“许可证未接受 -> build-tools 被跳过 -> aidl 缺失”的连锁失败。
+          DEFAULT_SDK=/home/runner/.buildozer/android/platform/android-sdk
+          export ANDROID_SDK_ROOT=$DEFAULT_SDK
+          export ANDROID_HOME=$DEFAULT_SDK
+          export ANDROID_SDK_HOME=$DEFAULT_SDK   # 让 sdkmanager 把许可证写进 buildozer 的 SDK 目录本身
+          # 用临时 sdkmanager 预装包（不污染 buildozer 自己随后解压的 cmdline-tools 目录）
+          mkdir -p /tmp/ct
           curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/ct.zip
-          unzip -q -d "$ANDROID_SDK_ROOT/cmdline-tools" /tmp/ct.zip
-          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          unzip -q -d /tmp/ct /tmp/ct.zip
+          mv /tmp/ct/cmdline-tools /tmp/ct/latest
+          SDKMANAGER=/tmp/ct/latest/bin/sdkmanager
           echo "==> sdkmanager = $SDKMANAGER"
           yes 2>/dev/null | "$SDKMANAGER" --licenses || true
-          yes 2>/dev/null | "$SDKMANAGER" --accept-license || true
           yes 2>/dev/null | "$SDKMANAGER" "build-tools;37.0.0" "platform-tools" "platforms;android-33" "platforms;android-37" || true
+          # 双保险：许可证同时写到默认位置 ~/.android/licenses
           mkdir -p ~/.android
-          cp -rf "$ANDROID_SDK_ROOT/licenses" ~/.android/ 2>/dev/null || true
+          cp -rf "$DEFAULT_SDK/licenses" ~/.android/ 2>/dev/null || true
+          echo "==> buildozer 默认 SDK 已预装内容："
+          ls -1 "$DEFAULT_SDK" 2>/dev/null || echo "（目录稍后由 buildozer 创建，包已写入该路径）"
           echo "==> 已接受的许可证："
           ls -1 ~/.android/licenses 2>/dev/null || echo "（无，需检查）"
-          sed -i '/^android.sdk_path = /d' build/buildozer.spec
-          sed -i "/^\[android\]/a android.sdk_path = $ANDROID_SDK_ROOT" build/buildozer.spec
-          echo "==> 注入后的 sdk_path 配置："
-          grep -n 'android.sdk_path' build/buildozer.spec
           cd build
           buildozer android debug
       - name: 上传 APK
