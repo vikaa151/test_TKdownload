@@ -67,29 +67,39 @@ jobs:
             libgtk-3-dev libglib2.0-dev libgstreamer1.0-dev golang curl
       - name: 安装 buildozer
         run: pip install buildozer
-      - name: 构建 APK（预装并接受 SDK 许可证后编译，耗时较长）
+      - name: 构建 APK（修复 SDK 布局并预接受许可证后编译，耗时较长）
         run: |
           export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+          # buildozer 1.6.0 实际使用的默认 SDK 路径（日志 Extracting ... to 该路径可证）。
+          # 关键点：buildozer 的 sdkmanager_path 只认 <SDK>/tools/bin/sdkmanager
+          # （源码 targets/android.py:275），而它自己下载的 commandlinetools 解压到
+          # cmdline-tools/bin，路径对不上会报 “sdkmanager does not exist”。
+          # 因此这里手动把 commandlinetools 摆到 buildozer 真正要找的 tools/bin 下。
           DEFAULT_SDK=/home/runner/.buildozer/android/platform/android-sdk
           export ANDROID_SDK_ROOT=$DEFAULT_SDK
           export ANDROID_HOME=$DEFAULT_SDK
-          export ANDROID_SDK_HOME=$DEFAULT_SDK   # 让 sdkmanager 把许可证写进 buildozer 的 SDK 目录本身
+          export ANDROID_SDK_HOME=$DEFAULT_SDK   # 让 sdkmanager 把许可证写进 buildozer 的 SDK 目录
+
+          # 1) 下载 commandlinetools 并放到 buildozer 真正要找的路径：<SDK>/tools/bin/sdkmanager
           mkdir -p /tmp/ct
           curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/ct.zip
           unzip -q -d /tmp/ct /tmp/ct.zip
-          mv /tmp/ct/cmdline-tools /tmp/ct/latest
-          SDKMANAGER=/tmp/ct/latest/bin/sdkmanager
+          mkdir -p "$DEFAULT_SDK/tools"
+          cp -rf /tmp/ct/cmdline-tools/* "$DEFAULT_SDK/tools/"
+          SDKMANAGER="$DEFAULT_SDK/tools/bin/sdkmanager"
           echo "==> sdkmanager = $SDKMANAGER"
+          test -x "$SDKMANAGER" && echo "sdkmanager 就位 OK" || { echo "sdkmanager 缺失!"; exit 1; }
+
+          # 2) 预先接受许可证（写进 SDK 目录与 ~/.android/licenses 双保险；
+          #    spec 里也已设 android.accept_sdk_license = True，buildozer 会自行喂 y）
           yes 2>/dev/null | "$SDKMANAGER" --sdk_root=$DEFAULT_SDK --licenses || true
-          yes 2>/dev/null | "$SDKMANAGER" --sdk_root=$DEFAULT_SDK "build-tools;37.0.0" "platform-tools" "platforms;android-33" "platforms;android-37" || true
           mkdir -p ~/.android
           cp -rf "$DEFAULT_SDK/licenses" ~/.android/ 2>/dev/null || true
-          echo "==> buildozer 默认 SDK 已预装内容："
-          ls -1 "$DEFAULT_SDK" 2>/dev/null || echo "（目录稍后由 buildozer 创建，包已写入该路径）"
-          echo "==> build-tools 是否就位："
-          ls -1 "$DEFAULT_SDK/build-tools" 2>/dev/null || echo "（未安装，需检查）"
           echo "==> 已接受的许可证："
           ls -1 ~/.android/licenses 2>/dev/null || echo "（无，需检查）"
+
+          # 3) buildozer 发现 SDK 目录已存在会跳过自下载，直接用 tools/bin/sdkmanager
+          #    自行安装 platform-tools / build-tools / platforms;android-33（许可证已接受，不卡）
           cd build
           buildozer android debug
       - name: 上传 APK
