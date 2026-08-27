@@ -72,6 +72,7 @@ jobs:
           export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
           export ANDROID_SDK_ROOT=$HOME/android-sdk
           export ANDROID_HOME=$ANDROID_SDK_ROOT
+          export ANDROID_SDK_HOME=$ANDROID_SDK_ROOT
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
           curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/ct.zip
           unzip -q -d "$ANDROID_SDK_ROOT/cmdline-tools" /tmp/ct.zip
@@ -81,8 +82,14 @@ jobs:
           yes 2>/dev/null | "$SDKMANAGER" --licenses || true
           yes 2>/dev/null | "$SDKMANAGER" --accept-license || true
           yes 2>/dev/null | "$SDKMANAGER" "build-tools;37.0.0" "platform-tools" "platforms;android-33" "platforms;android-37" || true
-          sed -i "s|^android.sdk_path = .*|android.sdk_path = $ANDROID_SDK_ROOT|" build/buildozer.spec
-          grep -q '^android.sdk_path' build/buildozer.spec || echo "android.sdk_path = $ANDROID_SDK_ROOT" >> build/buildozer.spec
+          mkdir -p ~/.android
+          cp -rf "$ANDROID_SDK_ROOT/licenses" ~/.android/ 2>/dev/null || true
+          echo "==> 已接受的许可证："
+          ls -1 ~/.android/licenses 2>/dev/null || echo "（无，需检查）"
+          sed -i '/^android.sdk_path = /d' build/buildozer.spec
+          sed -i "/^\[android\]/a android.sdk_path = $ANDROID_SDK_ROOT" build/buildozer.spec
+          echo "==> 注入后的 sdk_path 配置："
+          grep -n 'android.sdk_path' build/buildozer.spec
           cd build
           buildozer android debug
       - name: 上传 APK
