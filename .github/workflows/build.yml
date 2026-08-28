@@ -76,6 +76,7 @@ jobs:
       - name: 构建 APK（修复 SDK 布局并预接受许可证后编译，耗时较长）
         run: |
           export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+          export ACLOCAL_PATH=/usr/share/aclocal:/usr/local/share/aclocal
           # buildozer 1.6.0 实际使用的默认 SDK 路径（日志 Extracting ... to 该路径可证）。
           # 关键点：buildozer 的 sdkmanager_path 只认 <SDK>/tools/bin/sdkmanager
           # （源码 targets/android.py:275），而它自己下载的 commandlinetools 解压到
