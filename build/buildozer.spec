@@ -29,7 +29,7 @@ p4a.source_dir = /opt/p4a
 
 # 第三方运行依赖（PySide6 由 qt bootstrap 自动提供；gmssl/httpx/openpyxl 须显式声明，否则打包后 import 失败）
 requirements = PySide6, httpx, gmssl, openpyxl
-
+p4a.bootstrap = qt
 # 入口：p4a qt bootstrap 约定从 source.dir 下的 main.py 启动（见仓库根 main.py）。
 # A_Bogus 签名：纯 Python 实现（src/abogus.py + src/signer.py），依赖 gmssl，
 # 已在 requirements 中声明，无需 Node.js、无需任何 JS 文件。
