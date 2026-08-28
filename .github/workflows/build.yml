@@ -69,8 +69,9 @@ jobs:
         run: pip install buildozer
       - name: 准备 python-for-android（锁定 Python 3.11.5，规避最新版默认 3.14 的 bootstrap 头文件缺失）
         run: |
-          git clone --depth 1 --branch 2026.5.9 https://github.com/kivy/python-for-android /opt/p4a
+          git clone --depth 1 --branch v2026.05.09 https://github.com/kivy/python-for-android /opt/p4a
           sed -i "s/3\.14\.2/3.11.5/g" /opt/p4a/pythonforandroid/recipes/python3/__init__.py /opt/p4a/pythonforandroid/recipes/hostpython3/__init__.py
+          pip install -e /opt/p4a --no-deps
           echo "patched python versions:"; grep -nE "version\s*=\s*['\"]3" /opt/p4a/pythonforandroid/recipes/python3/__init__.py /opt/p4a/pythonforandroid/recipes/hostpython3/__init__.py
       - name: 构建 APK（修复 SDK 布局并预接受许可证后编译，耗时较长）
         run: |
