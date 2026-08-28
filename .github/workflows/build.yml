@@ -72,6 +72,7 @@ jobs:
           git clone --depth 1 --branch v2026.05.09 https://github.com/kivy/python-for-android /opt/p4a
           sed -i "s/3\.14\.2/3.11.5/g" /opt/p4a/pythonforandroid/recipes/python3/__init__.py /opt/p4a/pythonforandroid/recipes/hostpython3/__init__.py
           sed -i "s|pip install -U pip|pip install -U 'pip==25.2'|g" /opt/p4a/pythonforandroid/build.py
+          sed -i "s|pip install -U pip|pip install -U 'pip==25.2'|g" /opt/p4a/pythonforandroid/build.py
           pip install -e /opt/p4a --no-deps
           echo "patched python versions:"; grep -nE "version\s*=\s*['\"]3" /opt/p4a/pythonforandroid/recipes/python3/__init__.py /opt/p4a/pythonforandroid/recipes/hostpython3/__init__.py
       - name: 构建 APK（修复 SDK 布局并预接受许可证后编译，耗时较长）
