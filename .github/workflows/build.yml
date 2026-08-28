@@ -64,7 +64,7 @@ jobs:
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip \
             autoconf libtool pkg-config zlib1g-dev libncurses-dev \
             cmake libffi-dev libssl-dev patchelf automake build-essential \
-            libgtk-3-dev libglib2.0-dev libgstreamer1.0-dev golang curl
+            libgtk-3-dev libglib2.0-dev libgstreamer1.0-dev golang curl libltdl-dev
       - name: 安装 buildozer
         run: pip install buildozer
       - name: 准备 python-for-android（锁定 Python 3.11.5，规避最新版默认 3.14 的 bootstrap 头文件缺失）
