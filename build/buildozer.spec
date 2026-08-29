@@ -18,7 +18,7 @@ android.permissions = INTERNET
 android.api = 33
 android.minapi = 24
 # NDK 用 p4a 推荐版本（buildozer 1.6.0 + 当前 p4a 推荐 r28c），避免与 Qt-for-Android 不兼容
-android.ndk = 28c
+android.ndk = 25b
 android.accept_sdk_license = True
 
 # 锁定到我们 patch 过的 python-for-android 副本（强制 Python 3.11.5，规避 3.14 实验版的 bootstrap 头文件缺失）
