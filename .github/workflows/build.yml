@@ -71,17 +71,31 @@ jobs:
         run: |
           git clone --depth 1 --branch v2026.05.09 https://github.com/kivy/python-for-android /opt/p4a
           sed -i "s/3\.14\.2/3.11.5/g" /opt/p4a/pythonforandroid/recipes/python3/__init__.py /opt/p4a/pythonforandroid/recipes/hostpython3/__init__.py
-          # 修复 p4a 构建 venv 的 pip 损坏：先 ensurepip 重装干净 pip，再强制重装固定 25.2，避免版本错配
-          sed -i "s|pip install -U pip|python -m ensurepip --upgrade \&\& python -m pip install --force-reinstall --no-deps 'pip==25.2'|g" /opt/p4a/pythonforandroid/build.py
+          # 修复 p4a 构建 venv 的 pip 损坏（resolvelib 版本错配，导入 RequirementInformation 失败）：
+          # venv 自带的 pip 23.2.1 已坏，连 "pip install" 都跑不起来，无法自我升级。
+          # 因此用官方独立引导脚本 get-pip.py 强制装一份干净一致的 pip 25.2（不依赖已坏的 pip）。
+          sed -i "s|pip install -U pip|curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py \&\& python /tmp/get-pip.py 'pip==25.2'|g" /opt/p4a/pythonforandroid/build.py
           echo "patched python versions:"; grep -nE "version\s*=\s*['\"]3" /opt/p4a/pythonforandroid/recipes/python3/__init__.py /opt/p4a/pythonforandroid/recipes/hostpython3/__init__.py
       - name: 构建 APK（修复 SDK 布局并预接受许可证后编译，耗时较长）
         run: |
           export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+          # 修复 libffi 编译：其 configure.ac 用到 LT_SYS_SYMBOL_USCORE 宏，该宏定义在
+          # /usr/share/aclocal/ltdl.m4，此文件归 libltdl-dev 包（已在“安装系统依赖”步骤补装）。
+          # 之前只装 libtool 没装 libltdl-dev，aclocal 找不到宏 -> autoreconf 失败。
+          # 下面 ACLOCAL_PATH 作为双保险保留（指向的本来就是 aclocal 默认目录，无副作用）。
           export ACLOCAL_PATH=/usr/share/aclocal:/usr/local/share/aclocal
+
+          # buildozer 1.6.0 实际使用的默认 SDK 路径（日志 Extracting ... to 该路径可证）。
+          # 关键点：buildozer 的 sdkmanager_path 只认 <SDK>/tools/bin/sdkmanager
+          # （源码 targets/android.py:275），而它自己下载的 commandlinetools 解压到
+          # cmdline-tools/bin，路径对不上会报 “sdkmanager does not exist”。
+          # 因此这里手动把 commandlinetools 摆到 buildozer 真正要找的 tools/bin 下。
           DEFAULT_SDK=/home/runner/.buildozer/android/platform/android-sdk
           export ANDROID_SDK_ROOT=$DEFAULT_SDK
           export ANDROID_HOME=$DEFAULT_SDK
-          export ANDROID_SDK_HOME=$DEFAULT_SDK
+          export ANDROID_SDK_HOME=$DEFAULT_SDK   # 让 sdkmanager 把许可证写进 buildozer 的 SDK 目录
+
+          # 1) 下载 commandlinetools 并放到 buildozer 真正要找的路径：<SDK>/tools/bin/sdkmanager
           mkdir -p /tmp/ct
           curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/ct.zip
           unzip -q -d /tmp/ct /tmp/ct.zip
@@ -90,9 +104,17 @@ jobs:
           SDKMANAGER="$DEFAULT_SDK/tools/bin/sdkmanager"
           echo "==> sdkmanager = $SDKMANAGER"
           test -x "$SDKMANAGER" && echo "sdkmanager 就位 OK" || { echo "sdkmanager 缺失!"; exit 1; }
+
+          # 2) 预先接受许可证（写进 SDK 目录与 ~/.android/licenses 双保险；
+          #    spec 里也已设 android.accept_sdk_license = True，buildozer 会自行喂 y）
           yes 2>/dev/null | "$SDKMANAGER" --sdk_root=$DEFAULT_SDK --licenses || true
           mkdir -p ~/.android
           cp -rf "$DEFAULT_SDK/licenses" ~/.android/ 2>/dev/null || true
+          echo "==> 已接受的许可证："
+          ls -1 ~/.android/licenses 2>/dev/null || echo "（无，需检查）"
+
+          # 3) buildozer 发现 SDK 目录已存在会跳过自下载，直接用 tools/bin/sdkmanager
+          #    自行安装 platform-tools / build-tools / platforms;android-33（许可证已接受，不卡）
           cd build
           set -o pipefail
           buildozer android debug > build_apk.log 2>&1
