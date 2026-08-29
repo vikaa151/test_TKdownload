@@ -71,13 +71,21 @@ jobs:
         run: |
           git clone --depth 1 --branch v2026.05.09 https://github.com/kivy/python-for-android /opt/p4a
           sed -i "s/3\.14\.2/3.11.5/g" /opt/p4a/pythonforandroid/recipes/python3/__init__.py /opt/p4a/pythonforandroid/recipes/hostpython3/__init__.py
+          # 修复 p4a 构建 venv 的 pip 损坏/版本混搭：build.py 里 "pip install -U pip" 在 venv 已有
+          # 破损 pip（23.2.1，resolvelib 文件混搭，导入 RequirementInformation 失败）时会直接崩、升不了级。
+          # 因此先 python -m ensurepip --upgrade 把 venv 内 pip 重装成干净一致版，再升到固定 25.2，
+          # 保证后续打包用的 pip 单一一致（open_rich_spinner 等符号齐全，不再混搭）。
           sed -i "s|pip install -U pip|python -m ensurepip --upgrade \&\& python -m pip install -U 'pip==25.2'|g" /opt/p4a/pythonforandroid/build.py
-          pip install -e /opt/p4a --no-deps
           echo "patched python versions:"; grep -nE "version\s*=\s*['\"]3" /opt/p4a/pythonforandroid/recipes/python3/__init__.py /opt/p4a/pythonforandroid/recipes/hostpython3/__init__.py
       - name: 构建 APK（修复 SDK 布局并预接受许可证后编译，耗时较长）
         run: |
           export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+          # 修复 libffi 编译：其 configure.ac 用到 LT_SYS_SYMBOL_USCORE 宏，该宏定义在
+          # /usr/share/aclocal/ltdl.m4，此文件归 libltdl-dev 包（已在“安装系统依赖”步骤补装）。
+          # 之前只装 libtool 没装 libltdl-dev，aclocal 找不到宏 -> autoreconf 失败。
+          # 下面 ACLOCAL_PATH 作为双保险保留（指向的本来就是 aclocal 默认目录，无副作用）。
           export ACLOCAL_PATH=/usr/share/aclocal:/usr/local/share/aclocal
+
           # buildozer 1.6.0 实际使用的默认 SDK 路径（日志 Extracting ... to 该路径可证）。
           # 关键点：buildozer 的 sdkmanager_path 只认 <SDK>/tools/bin/sdkmanager
           # （源码 targets/android.py:275），而它自己下载的 commandlinetools 解压到
@@ -109,10 +117,19 @@ jobs:
           # 3) buildozer 发现 SDK 目录已存在会跳过自下载，直接用 tools/bin/sdkmanager
           #    自行安装 platform-tools / build-tools / platforms;android-33（许可证已接受，不卡）
           cd build
-          buildozer android debug
+          buildozer android debug 2>&1 | tee build_apk.log
+          echo "===== 若构建失败，以下为日志中的报错关键词（完整日志见 Artifacts 里的 build-log）====="
+          grep -nE "Error|Traceback|Exception|fatal error|command failed" build_apk.log | tail -50 || true
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: build/bin/*.apk
           if-no-files-found: error
+      - name: 上传构建日志（无论成功失败）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build/build_apk.log
+          if-no-files-found: warn
